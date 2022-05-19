@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Integration tests for the Recording importer service
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-public class RecordingImporterIntegrationTests {
+public class RecordingImporterEndToEndTests {
 
     private static final String TEST_DATA = "Some test data...";
 
