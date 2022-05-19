@@ -1,7 +1,10 @@
 package com.softavail.recordingimporter;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import com.github.tomakehurst.wiremock.matching.*;
 import com.softavail.recordingimporter.controller.dto.ImportRequestDto;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -73,21 +76,35 @@ public class RecordingImporterIntegrationTests {
     }
 
     @Test
-    public void testImportPositive() {
+    public void testImportPositive() throws JsonProcessingException {
+        // prepare test server stub for the publish service
         stubFor(post(urlEqualTo("/publish")).willReturn(aResponse().withStatus(200)));
 
         ImportRequestDto request = new ImportRequestDto();
         request.setFilename(testFile.getAbsolutePath());
+        request.setCallId("1235");
 
         HttpEntity<ImportRequestDto> requestEntity = new HttpEntity<>(request);
         assertThat(this.restTemplate.exchange("http://localhost:" + testServerPort + "/imports", HttpMethod.POST, requestEntity,
                 String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // may need more sophisticated method for the body validation
+        // Verify the metadata part of the request body
+        MultipartValuePattern metadataBodyPart = new MultipartValuePatternBuilder()
+                .withName("metadata")
+                .withHeader("Content-Type", containing("application/json"))
+                .withBody(new EqualToJsonPattern(new ObjectMapper().writeValueAsString(request), true, true))
+                .build();
+
+        // Verify the file part of the request body
+        MultipartValuePattern fileBodyPart = new MultipartValuePatternBuilder()
+                .withName("mediaFile")
+                .withHeader("Content-Type", new ContainsPattern("video/ogg"))
+                .withBody(containing(TEST_DATA))
+                .build();
+
         verify(postRequestedFor(urlEqualTo("/publish"))
-                .withRequestBody(containing("form-data; name=\"metadata\"\r\nContent-Type: application/json"))
-                .withRequestBody(containing("form-data; name=\"mediaFile\"; filename=\"" + testFile.getAbsolutePath() + "\"\r\nContent-Type: video/ogg"))
-                .withRequestBody(containing(TEST_DATA))
+                .withRequestBodyPart(metadataBodyPart)
+                .withRequestBodyPart(fileBodyPart)
         );
     }
 
@@ -96,6 +113,7 @@ public class RecordingImporterIntegrationTests {
      */
     @Test
     public void testImportFailedProcessor() {
+        // prepare test server stub for the publish service
         stubFor(post(urlEqualTo("/publish")).willReturn(aResponse().withStatus(500)));
 
         ImportRequestDto request = new ImportRequestDto();
